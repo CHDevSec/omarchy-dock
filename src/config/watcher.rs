@@ -4,7 +4,7 @@
 //!   * `~/.config/omarchy-dock/`            — config.toml and style.css
 //!   * `~/.local/state/omarchy/current/`    — the active-theme symlink
 //!   * the theme directory it resolves to   — in-place palette edits
-//!   * `/tmp` for Omarchy's screen-recording marker — so the dock can get out
+//!   * the runtime dir for Omarchy's screen-recording marker — so the dock can get out
 //!     of the way of a recording, and come back when it stops
 //!
 //! Editors rarely write a file once; they truncate, write, rename, and often

@@ -154,8 +154,17 @@ pub fn notify(headline: &str, body: Option<&str>, glyph: Option<&str>) {
 /// `omarchy capture screenrecording` creates it on start and deletes it on
 /// stop, so its existence is the cheapest correct answer to "is the screen
 /// being recorded" — no polling, and a plain file the dock can watch.
-pub static RECORDING_MARKER: std::sync::LazyLock<PathBuf> =
-    std::sync::LazyLock::new(|| PathBuf::from("/tmp/omarchy-screenrecord-filename"));
+///
+/// Omarchy 4.5 moved it out of `/tmp` into the per-user runtime directory,
+/// falling back to the state directory exactly like the recorder script does.
+pub static RECORDING_MARKER: std::sync::LazyLock<PathBuf> = std::sync::LazyLock::new(|| {
+    let dir = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("XDG_STATE_HOME").map(|d| PathBuf::from(d).join("omarchy")))
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/state/omarchy")))
+        .unwrap_or_else(|| PathBuf::from("/tmp"));
+    dir.join("omarchy-screenrecord-filename")
+});
 
 /// Whether a screen recording is in progress.
 pub fn is_recording() -> bool {
