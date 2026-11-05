@@ -257,6 +257,31 @@ fn build_window() -> gtk::Window {
         stack.add_named(&scroll, Some("appearance"));
     }
 
+    // Built here because the hover mode on the Hover page decides whether it
+    // means anything; it is placed on the Animation page.
+    let lift_row = field(
+        "Lift",
+        Some("Extra rise of the magnified icon, in px. Only used by Magnify."),
+        &number(0.0, 40.0, 1.0, 0, cfg.magnify.lift, |v| edit(move |c| c.magnify.lift = v)),
+    );
+    lift_row.set_sensitive(cfg.magnify.hover == Hover::Scale);
+
+    // Presets rather than raw spring constants: what matters is how it feels.
+    // A hand-edited value that matches none leaves none selected.
+    const SPEEDS: [f64; 3] = [260.0, crate::config::DEFAULT_STIFFNESS, 800.0];
+    const BOUNCES: [f64; 3] = [1.0, 0.82, 0.6];
+    let pick = |list: &[f64; 3], v: f64| {
+        list.iter().position(|x| (x - v).abs() < 0.01).map(|i| i as u32).unwrap_or(u32::MAX)
+    };
+    let bounce_row = field(
+        "Bounce",
+        Some("Overshoot when a magnified icon settles. Only used by Magnify."),
+        &segmented(&["None", "Subtle", "Bouncy"], pick(&BOUNCES, cfg.magnify.damping_ratio), |i| {
+            edit(move |c| c.magnify.damping_ratio = BOUNCES[i as usize])
+        }),
+    );
+    bounce_row.set_sensitive(cfg.magnify.hover == Hover::Scale);
+
     // ── hover ───────────────────────────────────────────────────────────────
     {
         let (scroll, page) = page("Hover", "What happens when the pointer rests on an icon.");
@@ -277,6 +302,8 @@ fn build_window() -> gtk::Window {
         };
         {
             let zoom_row = zoom_row.clone();
+            let lift_row = lift_row.clone();
+            let bounce_row = bounce_row.clone();
             g.append(&field(
                 "On hover",
                 Some("Highlight matches the rest of Omarchy."),
@@ -287,6 +314,8 @@ fn build_window() -> gtk::Window {
                         _ => Hover::Fill,
                     };
                     zoom_row.set_sensitive(mode == Hover::Scale);
+                    lift_row.set_sensitive(mode == Hover::Scale);
+                    bounce_row.set_sensitive(mode == Hover::Scale);
                     edit(move |c| {
                         c.magnify.hover = mode;
                         // `enabled` gates hover reactions as a whole; the mode
@@ -411,6 +440,71 @@ fn build_window() -> gtk::Window {
         stack.add_named(&scroll, Some("workspaces"));
     }
 
+    // ── animation ───────────────────────────────────────────────────────────
+    {
+        let (scroll, page) = page("Animation", "How the dock moves. Springs, so motion can reverse mid-way.");
+
+        let g = group(&page, "General");
+        let motion_rows: std::rc::Rc<RefCell<Vec<gtk::Box>>> = Default::default();
+        {
+            let rows = motion_rows.clone();
+            g.append(&toggle(
+                "Animations",
+                Some("Off makes hover, gliding icons and auto-hide instant."),
+                cfg.dock.animations,
+                move |v| {
+                    for r in rows.borrow().iter() {
+                        r.set_sensitive(v);
+                    }
+                    edit(move |c| c.dock.animations = v)
+                },
+            ));
+        }
+
+        let g = group(&page, "Hover");
+        let speed = field(
+            "Speed",
+            Some("Hover highlight, magnify and gliding icons."),
+            &segmented(&["Relaxed", "Normal", "Snappy"], pick(&SPEEDS, cfg.magnify.stiffness), |i| {
+                edit(move |c| c.magnify.stiffness = SPEEDS[i as usize])
+            }),
+        );
+        g.append(&speed);
+        g.append(&bounce_row);
+        g.append(&lift_row);
+
+        let g = group(&page, "Auto-hide");
+        let slide = field(
+            "Slide duration",
+            Some("Milliseconds to slide in or out."),
+            &number(40.0, 1000.0, 20.0, 0, cfg.autohide.slide_ms as f64, |v| {
+                edit(move |c| c.autohide.slide_ms = v as u64)
+            }),
+        );
+        g.append(&slide);
+        g.append(&field(
+            "Reveal delay",
+            Some("Milliseconds the pointer rests on the edge before it shows."),
+            &number(0.0, 2000.0, 20.0, 0, cfg.autohide.reveal_delay_ms as f64, |v| {
+                edit(move |c| c.autohide.reveal_delay_ms = v as u64)
+            }),
+        ));
+        g.append(&field(
+            "Hide delay",
+            Some("Milliseconds after the pointer leaves before it hides."),
+            &number(0.0, 5000.0, 50.0, 0, cfg.autohide.hide_delay_ms as f64, |v| {
+                edit(move |c| c.autohide.hide_delay_ms = v as u64)
+            }),
+        ));
+
+        for r in [&speed, &slide] {
+            r.set_sensitive(cfg.dock.animations);
+            motion_rows.borrow_mut().push((*r).clone());
+        }
+
+        stack.add_named(&scroll, Some("animation"));
+    }
+
     // ── sidebar ─────────────────────────────────────────────────────────────
     let sidebar = gtk::Box::new(gtk::Orientation::Vertical, 0);
     sidebar.add_css_class("dock-settings-sidebar");
@@ -425,6 +519,7 @@ fn build_window() -> gtk::Window {
         ("placement", "Placement"),
         ("appearance", "Appearance"),
         ("hover", "Hover"),
+        ("animation", "Animation"),
         ("items", "Items"),
         ("workspaces", "Workspaces"),
     ] {

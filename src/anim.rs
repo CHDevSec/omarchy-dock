@@ -12,6 +12,14 @@ pub struct Spring {
     pub target: f64,
 }
 
+/// Whether springs animate. Off, `step` lands on the target at once, so every
+/// motion in the dock becomes instant without each caller checking.
+static ENABLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+pub fn set_enabled(on: bool) {
+    ENABLED.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// Longest frame the integrator will accept. A compositor stall or a laptop
 /// resume would otherwise produce a huge `dt` and blow the spring up.
 const MAX_DT: f64 = 1.0 / 30.0;
@@ -22,6 +30,10 @@ impl Spring {
     }
 
     pub fn step(&mut self, dt: f64, stiffness: f64, damping: f64) {
+        if !ENABLED.load(std::sync::atomic::Ordering::Relaxed) {
+            self.settle();
+            return;
+        }
         let dt = dt.clamp(0.0, MAX_DT);
         let accel = stiffness * (self.target - self.pos) - damping * self.vel;
         self.vel += accel * dt;

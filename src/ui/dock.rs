@@ -3201,6 +3201,13 @@ fn ensure_ticking(state: &Rc<RefCell<State>>) {
         // The two numbers the springs need, not a copy of the whole config
         // on every frame.
         let (stiffness, damping) = (s.cfg.magnify.stiffness, s.cfg.damping());
+        // The Speed setting scales the hover fill and the glide too, relative
+        // to the default stiffness. Damping goes by the square root so each
+        // spring keeps its own damping ratio: the fill and the glide still
+        // never overshoot, only Magnify's Bounce does.
+        let pace = (stiffness / crate::config::DEFAULT_STIFFNESS).clamp(0.25, 4.0);
+        let (hover_k, hover_c) = (HOVER_STIFFNESS * pace, HOVER_DAMPING * pace.sqrt());
+        let (glide_k, glide_c) = (GLIDE_STIFFNESS * pace, GLIDE_DAMPING * pace.sqrt());
         let mut moving = false;
         for i in 0..s.springs.len() {
             if let Some(mut p) = s.pulses[i] {
@@ -3249,7 +3256,7 @@ fn ensure_ticking(state: &Rc<RefCell<State>>) {
             }
 
             if hover_busy {
-                s.hovers[i].step(dt, HOVER_STIFFNESS, HOVER_DAMPING);
+                s.hovers[i].step(dt, hover_k, hover_c);
                 if s.hovers[i].settled() {
                     s.hovers[i].settle();
                 } else {
@@ -3266,7 +3273,7 @@ fn ensure_ticking(state: &Rc<RefCell<State>>) {
                 }
             }
             if grow_busy {
-                s.grows[i].step(dt, GLIDE_STIFFNESS, GLIDE_DAMPING);
+                s.grows[i].step(dt, glide_k, glide_c);
                 if s.grows[i].settled() {
                     s.grows[i].settle();
                 } else {
@@ -3278,7 +3285,7 @@ fn ensure_ticking(state: &Rc<RefCell<State>>) {
                 // and hold, not wobble while the user is aiming a drop, and a
                 // glide takes its own, slower pace.
                 let (k, c) = if s.gliding {
-                    (GLIDE_STIFFNESS, GLIDE_DAMPING)
+                    (glide_k, glide_c)
                 } else {
                     (SHIFT_STIFFNESS, SHIFT_DAMPING)
                 };
@@ -3293,7 +3300,7 @@ fn ensure_ticking(state: &Rc<RefCell<State>>) {
         }
 
         if !s.panel_glide.settled() {
-            s.panel_glide.step(dt, GLIDE_STIFFNESS, GLIDE_DAMPING);
+            s.panel_glide.step(dt, glide_k, glide_c);
             if s.panel_glide.settled() {
                 s.panel_glide.settle();
             } else {

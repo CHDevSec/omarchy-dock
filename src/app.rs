@@ -64,6 +64,7 @@ impl App {
             Shell::fallback(&self.palette)
         };
         self.cfg = effective(self.raw_cfg.clone(), &self.shell);
+        crate::anim::set_enabled(self.cfg.dock.animations);
         self.apply_icon_theme();
         let sheet = css::generate(&self.cfg, &self.palette, &self.shell);
         self.provider.load_from_string(&sheet);
@@ -561,6 +562,7 @@ pub fn run() -> glib::ExitCode {
         }
 
         let cfg = Config::load();
+        crate::anim::set_enabled(cfg.dock.animations);
         sync_bar_workspaces(&cfg);
         let provider = gtk::CssProvider::new();
         if let Some(display) = gdk::Display::default() {
@@ -695,6 +697,7 @@ pub fn run() -> glib::ExitCode {
                     AppEvent::FocusSettled => app.settle_focus(),
                     AppEvent::ConfigChanged => {
                         let next = Config::load();
+                        crate::anim::set_enabled(next.dock.animations);
                         sync_bar_workspaces(&next);
                         // Starts or stops watching notifications with it.
                         if let Some(w) = &app.worker {

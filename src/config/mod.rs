@@ -122,6 +122,9 @@ pub struct Dock {
     pub avoid_bar: bool,
     /// How long the pointer must rest on an icon before its name appears.
     pub tooltip_delay_ms: u64,
+    /// Animate at all. Off, every spring lands on its target in one frame:
+    /// hover, glide, drop gaps and the auto-hide slide become instant.
+    pub animations: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -360,9 +363,13 @@ impl Default for Dock {
             reserve_space: false,
             avoid_bar: true,
             tooltip_delay_ms: 400,
+            animations: true,
         }
     }
 }
+
+/// The magnify spring's default stiffness: the "Normal" speed.
+pub const DEFAULT_STIFFNESS: f64 = 460.0;
 
 impl Default for Magnify {
     fn default() -> Self {
@@ -373,7 +380,7 @@ impl Default for Magnify {
             hover: Hover::Fill,
             zoom: 1.45,
             lift: 6.0,
-            stiffness: 460.0,
+            stiffness: DEFAULT_STIFFNESS,
             damping_ratio: 0.82,
         }
     }
