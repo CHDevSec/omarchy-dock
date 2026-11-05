@@ -1,60 +1,35 @@
 #!/usr/bin/env bash
 #
-# Build and install omarchy-dock from this checkout.
+# Build and install Caio Dock (fork of omarchy-dock) from this checkout.
 #
-# `omarchy plugin add` clones this repository into
-# ~/.config/omarchy/plugins/io.github.szlukabence.omarchy-dock/, and that clone is the full source
-# tree — so the plugin you just installed can build the binary it supervises.
-# Run this from wherever the checkout lives:
+#   cd ~/.config/omarchy/plugins/io.github.caio.dock && ./install.sh
 #
-#   cd ~/.config/omarchy/plugins/io.github.szlukabence.omarchy-dock && ./install.sh
-#
-# The build goes through makepkg, so pacman owns the files and upgrading or
-# removing them is a normal package operation rather than tracking down loose
-# binaries. Everything it produces — target/, pkg/, src/, the package archive —
-# is gitignored, so a plugin checkout stays clean and `omarchy plugin update`
-# keeps working.
+# Omarchy 4.5+ owns /usr/bin/omarchy-dock (its native dock's config script), so
+# this fork installs its binary as /usr/local/bin/omarchy-dock-plugin, which is
+# what Service.qml supervises. No pacman package is involved.
 
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+dest=/usr/local/bin/omarchy-dock-plugin
 
 die() {
-  printf '\nomarchy-dock: %s\n' "$1" >&2
+  printf '\ncaio-dock: %s\n' "$1" >&2
   exit 1
 }
 
-for cmd in makepkg cargo; do
-  command -v "$cmd" >/dev/null 2>&1 || die "$cmd is not installed.
-  makepkg comes with base-devel:  sudo pacman -S --needed base-devel
-  cargo comes with rust:          sudo pacman -S --needed rust"
-done
+command -v cargo >/dev/null 2>&1 || die "cargo is not installed: sudo pacman -S --needed rust"
 
-echo "==> Building omarchy-dock (this compiles a GTK4 Rust project; give it a minute)"
-cd "$root/packaging/local"
+echo "==> Building (release)"
+cd "$root"
+cargo build --release --locked --bin omarchy-dock
 
-# -si builds and installs. The pacman step shows what it is about to install and
-# asks you to confirm it, then for your password; that is the only privileged
-# thing here.
-makepkg -si
+echo "==> Installing $dest (needs sudo)"
+sudo install -m755 target/release/omarchy-dock "$dest"
 
-command -v omarchy-dock >/dev/null 2>&1 ||
-  die "the package installed but omarchy-dock is not on PATH.
-  If you have a stale copy in ~/.local/bin, remove it — that directory can
-  precede /usr/bin and would shadow the package."
+echo "==> Restarting the dock"
+pkill -f '^(/usr/local/bin/)?omarchy-dock-plugin( |$)' || true
+sleep 0.5
+setsid uwsm-app -- omarchy-dock-plugin >/dev/null 2>&1 &
 
-echo
-echo "==> Wiring into Omarchy"
-omarchy-dockctl install
-
-cat <<'EOF'
-
-Done. Start it now with:
-
-  omarchy-dock &
-
-or just log out and back in — the plugin starts it with the shell.
-
-Settings:  right-click the launcher, or `omarchy-dockctl settings`
-Removal:   see the Removal section of README.md
-EOF
+echo "Done."
