@@ -1566,6 +1566,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "fork: the released files are upstream's and name upstream's plugin id"]
     fn the_released_files_are_the_releases() {
         // Each release's files name the id that release used.
         let id = |text: &str| {

@@ -204,12 +204,12 @@ pub fn generate(cfg: &Config, palette: &Palette, shell: &Shell) -> String {
 ",
         // Badge text must contrast with the urgency colour, not the panel.
         badge_fg = if urgent.luminance() > 0.45 { "#000000" } else { "#ffffff" },
-        badge_radius = if omarchy { (radius * 0.4).max(2.0) } else { 9.0 },
+        badge_radius = if omarchy { sub_radius(radius, 0.4) } else { 9.0 },
         badge_pad = m.space("xs", 3.0).max(3.0),
         caption = m.font("caption", 0.833),
         body = m.font("body", 1.0),
-        plate_radius = if omarchy { (radius * 0.6).max(2.0) } else { 10.0 },
-        ws_radius = if omarchy { (radius * 0.6).max(2.0) } else { 8.0 },
+        plate_radius = if omarchy { sub_radius(radius, 0.6) } else { 10.0 },
+        ws_radius = if omarchy { sub_radius(radius, 0.6) } else { 8.0 },
         ws_idle = ctl.color.with_alpha(ctl.normal_fill_alpha),
         plate_border = border_rules(
             &Border::solid(ctl.color),
@@ -236,6 +236,10 @@ pub fn generate(cfg: &Config, palette: &Palette, shell: &Shell) -> String {
 
     s.push_str(&format!(
         "
+/* Everything the dock draws as text uses the theme's monospace font, like
+   the bar and the shell's own menus. */
+.dock-menu, .dock-preview, .dock-tip-label, .dock-stack {{ font-family: monospace; }}
+
 .dock-menu > contents {{
   background-color: {menu_bg};
 {menu_border}
@@ -340,7 +344,7 @@ pub fn generate(cfg: &Config, palette: &Palette, shell: &Shell) -> String {
         pad = m.space("popup-padding", 6.0).max(4.0),
         row_x = m.space("row-padding-x", 12.0).max(8.0),
         row_y = m.space("control-padding-y", 6.0).max(4.0),
-        row_radius = if omarchy { (radius * 0.6).max(2.0) } else { 7.0 },
+        row_radius = if omarchy { sub_radius(radius, 0.6) } else { 7.0 },
         gap = m.space("sm", 4.0),
         body = m.font("body", 1.0),
         caption = m.font("caption", 0.833),
@@ -424,34 +428,231 @@ pub fn generate(cfg: &Config, palette: &Palette, shell: &Shell) -> String {
   opacity: 1;
 }}
 
-.dock-settings {{ min-width: {settings_w}px; }}
-
-/* The settings window is a real toplevel, not a layer surface, so unlike the
-   dock it does want an opaque background of its own. */
+/* ── settings window ─────────────────────────────────────────────────────
+   Drawn like an Omarchy panel: the theme's monospace font, the menu surface,
+   1px control borders at the shell's alphas, and the Hyprland corner radius
+   (square on a sharp theme). */
 .dock-settings-window,
 .dock-settings-window > * {{
   background-color: {menu_bg};
   color: {menu_fg};
 }}
 
-/* GTK's default switch accent is its own blue, which is the one thing in the
-   window that does not come from the theme. */
+.dock-settings-window * {{
+  font-family: monospace;
+  font-size: {body}px;
+}}
+
+.dock-settings-sidebar {{
+  min-width: 170px;
+  padding: {pad2}px {pad}px;
+  border-right: 1px solid {divider_soft};
+}}
+
+.dock-settings-title {{
+  font-size: {title}px;
+  font-weight: bold;
+  padding: 0 {row_x}px {pad2}px {row_x}px;
+}}
+
+.dock-settings-nav {{
+  padding: {row_y}px {row_x}px;
+  margin-bottom: 2px;
+  border-radius: {ctl_radius}px;
+  border: 1px solid transparent;
+  background: transparent;
+  box-shadow: none;
+  color: {menu_fg};
+  opacity: 0.7;
+}}
+
+.dock-settings-nav:hover {{
+  opacity: 1;
+  background-color: {hover_fill};
+  border-color: {hover_border};
+}}
+
+.dock-settings-nav:checked {{
+  opacity: 1;
+  background-color: {sel_fill};
+  border-color: transparent;
+  box-shadow: inset 2px 0 0 @dock_accent;
+}}
+
+.dock-settings-footer {{ opacity: 0.55; }}
+
+.dock-settings-version {{
+  padding: {gap}px {row_x}px 0 {row_x}px;
+  opacity: 0.35;
+  font-size: {caption}px;
+}}
+
+.dock-settings-page {{
+  padding: {pad2}px {pad3}px {pad3}px {pad3}px;
+}}
+
+.dock-settings-page-title {{
+  font-size: {title}px;
+  font-weight: bold;
+}}
+
+.dock-settings-page-subtitle {{
+  opacity: 0.55;
+  padding: {gap}px 0 {pad}px 0;
+}}
+
+.dock-settings-group-title {{
+  font-size: {caption}px;
+  opacity: 0.5;
+  letter-spacing: 1px;
+  padding: {pad2}px 0 {gap}px 0;
+}}
+
+.dock-settings-group {{
+  background-color: {normal_fill};
+  border: 1px solid {normal_border};
+  border-radius: {ctl_radius}px;
+}}
+
+.dock-settings-row {{
+  padding: {row_y2}px {row_x}px;
+  min-height: {ctl_h}px;
+  border-bottom: 1px solid {divider_soft};
+}}
+
+.dock-settings-row:last-child {{ border-bottom: none; }}
+
+.dock-settings-row:disabled {{ opacity: 0.4; }}
+
+.dock-settings-hint {{
+  opacity: 0.5;
+  font-size: {caption}px;
+}}
+
+/* Switch: Omarchy's ToggleSwitch — square track on a sharp theme, accent
+   fill when on, a knob in the panel colour. */
+.dock-settings-window switch {{
+  border-radius: {ctl_radius}px;
+  border: 1px solid {normal_border};
+  background-color: {normal_fill};
+  box-shadow: none;
+  min-height: 20px;
+}}
+
+.dock-settings-window switch:hover {{ border-color: {menu_fg_dim}; }}
+
+.dock-settings-window switch slider {{
+  border-radius: {ctl_radius}px;
+  background-image: none;
+  background-color: {menu_fg_dim};
+  border: none;
+  box-shadow: none;
+  min-width: 16px;
+  min-height: 16px;
+  margin: 2px;
+}}
+
 .dock-settings-window switch:checked {{
   background-color: @dock_accent;
+  border-color: @dock_accent;
 }}
 
-.dock-settings-note {{
-  color: {menu_fg};
-  opacity: 0.55;
-  font-size: {caption}px;
-  padding: 0 {row_x}px {gap}px {row_x}px;
+.dock-settings-window switch:checked slider {{ background-color: {menu_bg_solid}; }}
+
+.dock-settings-window switch image {{ opacity: 0; }}
+
+/* Button group: joined buttons, the active one filled with the accent. */
+.dock-segmented {{
+  border: 1px solid {normal_border};
+  border-radius: {ctl_radius}px;
 }}
 
-.dock-settings-row {{ padding: 2px {row_x}px; }}
-
-.dock-settings-row label {{
+.dock-segment {{
+  padding: {seg_y}px {row_x}px;
+  border-radius: 0;
+  border: none;
+  border-right: 1px solid {normal_border};
+  background: transparent;
+  box-shadow: none;
   color: {menu_fg};
-  font-size: {body}px;
+  opacity: 0.75;
+}}
+
+.dock-segment:last-child {{ border-right: none; }}
+
+.dock-segment:hover {{
+  opacity: 1;
+  background-color: {hover_fill};
+}}
+
+.dock-segment:checked {{
+  opacity: 1;
+  background-color: @dock_accent;
+  color: {menu_bg_solid};
+}}
+
+.dock-settings-button {{
+  background-image: none;
+  padding: {seg_y}px {row_x}px;
+  border-radius: {ctl_radius}px;
+  border: 1px solid {normal_border};
+  background-color: {normal_fill};
+  box-shadow: none;
+  color: {menu_fg};
+}}
+
+.dock-settings-button:hover {{
+  background-color: {hover_fill};
+  border-color: {menu_fg_dim};
+}}
+
+.dock-settings-button:active {{ background-color: {pressed_fill}; }}
+
+/* Number field with − / + steppers, all square. */
+.dock-settings-window spinbutton {{
+  border-radius: {ctl_radius}px;
+  border: 1px solid {normal_border};
+  background-color: {normal_fill};
+  box-shadow: none;
+  outline: none;
+  color: {menu_fg};
+}}
+
+.dock-settings-window spinbutton:focus-within {{ border-color: @dock_accent; }}
+
+.dock-settings-window spinbutton text {{
+  min-width: 56px;
+  padding: 0 {gap}px;
+}}
+
+.dock-settings-window spinbutton button {{
+  border-radius: 0;
+  border: none;
+  border-left: 1px solid {normal_border};
+  background: transparent;
+  box-shadow: none;
+  color: {menu_fg};
+  min-width: 28px;
+}}
+
+.dock-settings-window spinbutton button:hover {{ background-color: {hover_fill}; }}
+
+/* GTK's own buttons carry a gradient and a blue focus ring; neither exists
+   anywhere else in Omarchy. */
+.dock-settings-window button {{ background-image: none; }}
+
+.dock-settings-window *:focus-visible {{
+  outline: 1px solid @dock_accent;
+  outline-offset: -1px;
+  border-radius: {ctl_radius}px;
+}}
+
+.dock-settings-window scrollbar {{ background: transparent; border: none; }}
+
+.dock-settings-window scrollbar slider {{
+  border-radius: 0;
+  background-color: {menu_fg_dim};
+  min-width: 3px;
 }}
 ",
         divider = fg.with_alpha(0.34),
@@ -464,17 +665,33 @@ pub fn generate(cfg: &Config, palette: &Palette, shell: &Shell) -> String {
             tip.border_width,
             Some(&tip.background_css()),
         ),
-        tip_radius = if omarchy { (radius * 0.6).max(2.0) } else { 7.0 },
+        tip_radius = if omarchy { sub_radius(radius, 0.6) } else { 7.0 },
         tip_x = m.space("control-padding-x", 10.0).max(6.0),
         tip_y = m.space("xxs", 2.0).max(2.0),
         body = m.font("body", 1.0),
         gap = m.space("sm", 4.0),
         row_x = m.space("row-padding-x", 12.0).max(8.0),
-        row_radius = if omarchy { (radius * 0.6).max(2.0) } else { 6.0 },
+        row_radius = if omarchy { sub_radius(radius, 0.6) } else { 6.0 },
         menu_fg = menu.text.to_css(),
         sel_fill = sel_bg.with_alpha(sel_alpha),
         stack_w = m.space("searchable-dropdown-width", 260.0).max(220.0),
-        settings_w = m.space("searchable-dropdown-width", 270.0).max(240.0),
+        pad = m.space("popup-padding", 6.0).max(4.0),
+        pad2 = m.space("md", 10.0).max(8.0),
+        pad3 = m.space("lg", 18.0).max(14.0),
+        row_y = m.space("control-padding-y", 6.0).max(4.0),
+        row_y2 = m.space("control-padding-y", 6.0).max(4.0) + 2.0,
+        seg_y = m.space("xxs", 3.0).max(3.0),
+        ctl_h = m.space("control-height", 28.0).max(24.0),
+        title = m.font("title", 1.25),
+        ctl_radius = if omarchy { sub_radius(radius, 0.6) } else { 6.0 },
+        normal_fill = ctl.color.with_alpha(ctl.normal_fill_alpha.max(0.03)),
+        normal_border = ctl.color.with_alpha(ctl.normal_border_alpha.clamp(0.15, 0.5) * 0.6),
+        hover_fill = ctl.color.with_alpha(ctl.hover_fill_alpha),
+        hover_border = ctl.color.with_alpha(ctl.hover_border_alpha),
+        pressed_fill = ctl.color.with_alpha(ctl.pressed_fill_alpha),
+        divider_soft = fg.with_alpha(0.10),
+        menu_fg_dim = menu.text.with_alpha(0.45),
+        menu_bg_solid = menu.background.to_css(),
         menu_bg = menu.background_css(),
         caption = m.font("caption", 0.833),
     ));
@@ -508,6 +725,12 @@ pub fn radius(cfg: &Config, omarchy: bool) -> f64 {
     } else {
         cfg.dock.radius
     }
+}
+
+/// Radius for something nested inside a surface: a fraction of the surface's
+/// own, but square when the theme is square (Hyprland rounding 0).
+fn sub_radius(radius: f64, factor: f64) -> f64 {
+    if radius <= 0.0 { 0.0 } else { (radius * factor).max(2.0) }
 }
 
 /// Border declarations for a surface, gradient-aware.
