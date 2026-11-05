@@ -30,7 +30,7 @@ Item {
       "if ! command -v omarchy-dock-plugin >/dev/null 2>&1; then " +
         "omarchy notification send --app-name Dock -u critical " +
         "'Dock is not installed' " +
-        "'This plugin is only the supervisor. Build and install the binary: cd ~/.config/omarchy/plugins/io.github.caio.dock && ./install.sh'; " +
+        "'This plugin is only the supervisor. Build and install the binary: ~/Projects/caio-dock/install.sh'; " +
         "exit 0; " +
       "fi; " +
       "pgrep -f '^(/usr/local/bin/)?omarchy-dock-plugin( |$)' >/dev/null || setsid uwsm-app -- omarchy-dock-plugin >/dev/null 2>&1 &"]
