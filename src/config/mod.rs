@@ -143,6 +143,10 @@ pub struct Magnify {
     /// Fraction of critical damping. 1.0 never overshoots; below ~0.9 gives
     /// the slight pop that reads as "alive" rather than "sliding".
     pub damping_ratio: f64,
+    /// How many icons either side of the pointer magnify with it, falling
+    /// off with distance, while the icons part to make room: the classic dock
+    /// wave. 0 magnifies only the hovered icon.
+    pub spread: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -382,6 +386,7 @@ impl Default for Magnify {
             lift: 6.0,
             stiffness: DEFAULT_STIFFNESS,
             damping_ratio: 0.82,
+            spread: 0.0,
         }
     }
 }
@@ -617,12 +622,30 @@ impl Config {
 
     pub fn spacing(&self) -> f64 {
         self.dock.spacing.unwrap_or_else(|| {
-            if self.magnify.enabled {
+            if self.wave() {
+                // The wave parts the icons itself, so they can sit close.
+                8.0
+            } else if self.magnify.enabled {
                 ((self.magnify.zoom - 1.0) * self.dock.icon_size).max(10.0) + 2.0
             } else {
                 12.0
             }
         })
+    }
+
+    /// Whether hovering magnifies a wave of icons rather than just one.
+    pub fn wave(&self) -> bool {
+        self.magnify.enabled && self.magnify.hover == Hover::Scale && self.magnify.spread > 0.0
+    }
+
+    /// Room at each end of the dock's long axis for the wave: the end icons
+    /// are pushed outwards and grow, and must not be clipped by the surface.
+    pub fn wave_margin(&self) -> f64 {
+        if !self.wave() {
+            return 0.0;
+        }
+        let grow = (self.magnify.zoom - 1.0).max(0.0) * self.dock.icon_size;
+        (grow * (self.magnify.spread + 1.0) / 2.0).ceil() + 2.0
     }
 
     /// Absolute damping coefficient implied by `damping_ratio`.

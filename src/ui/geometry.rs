@@ -70,6 +70,8 @@ impl Geometry {
         // oscillates: revealing moves the surface away from the cursor that
         // triggered it.
         let edge = cfg.dock.edge_offset.max(0) as f64;
+        // Transparent room at both ends for the magnify wave to spill into.
+        let wave = cfg.wave_margin();
 
         if cfg.dock.position.is_vertical() {
             let panel_w = icon + px * 2.0;
@@ -79,7 +81,7 @@ impl Geometry {
             let panel_x =
                 if cfg.dock.position == Position::Left { edge } else { head };
             let mut slots = Vec::with_capacity(extents.len());
-            let mut cursor = py;
+            let mut cursor = wave + py;
             for e in &extents {
                 // Centre narrow slots on the icon column.
                 slots.push((panel_x + px, cursor));
@@ -88,9 +90,9 @@ impl Geometry {
 
             Self {
                 window_w: panel_w + head + edge,
-                window_h: panel_h,
+                window_h: panel_h + 2.0 * wave,
                 panel_x,
-                panel_y: 0.0,
+                panel_y: wave,
                 panel_w,
                 panel_h,
                 slots,
@@ -110,16 +112,16 @@ impl Geometry {
             let panel_y =
                 if cfg.dock.position == Position::Bottom { head } else { edge };
             let mut slots = Vec::with_capacity(extents.len());
-            let mut cursor = px;
+            let mut cursor = wave + px;
             for e in &extents {
                 slots.push((cursor, panel_y + py));
                 cursor += e + spacing;
             }
 
             Self {
-                window_w: panel_w,
+                window_w: panel_w + 2.0 * wave,
                 window_h: panel_h + head + edge,
-                panel_x: 0.0,
+                panel_x: wave,
                 panel_y,
                 panel_w,
                 panel_h,
@@ -186,6 +188,14 @@ impl Geometry {
         self.lift_dir.0 == 0.0
     }
 
+    /// Whether a surface-local point is over the panel band.
+    pub fn in_panel(&self, x: f64, y: f64) -> bool {
+        x >= self.panel_x
+            && x <= self.panel_x + self.panel_w
+            && y >= self.panel_y
+            && y <= self.panel_y + self.panel_h
+    }
+
     /// Which slot contains a surface-local point, ignoring any magnification.
     ///
     /// Hit-testing the *static* slot rather than the scaled icon is deliberate:
@@ -215,6 +225,30 @@ impl Geometry {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_wave_gets_room_at_both_ends_and_only_when_on() {
+        use crate::config::Hover;
+        let kinds = [ItemKind::App, ItemKind::App, ItemKind::App];
+        let mut cfg = Config::default();
+        cfg.magnify.hover = Hover::Scale;
+        cfg.magnify.zoom = 1.6;
+        let flat = Geometry::compute(&cfg, &kinds);
+        assert_eq!(cfg.wave_margin(), 0.0, "spread 0 is the single-icon magnify");
+
+        cfg.magnify.spread = 2.5;
+        cfg.dock.spacing = Some(flat.slots[1].0 - flat.slots[0].0 - cfg.dock.icon_size);
+        let m = cfg.wave_margin();
+        assert!(m > 0.0);
+        let wave = Geometry::compute(&cfg, &kinds);
+        assert_eq!(wave.window_w, flat.window_w + 2.0 * m);
+        assert_eq!(wave.panel_x, flat.panel_x + m);
+        assert_eq!(wave.slots[0].0, flat.slots[0].0 + m);
+        assert_eq!(wave.panel_w, flat.panel_w);
+
+        cfg.magnify.hover = Hover::Fill;
+        assert_eq!(cfg.wave_margin(), 0.0, "the wave is Magnify's alone");
+    }
 
     #[test]
     fn room_at_the_ends_moves_everything_along_and_comes_off_again() {

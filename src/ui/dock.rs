@@ -149,6 +149,9 @@ struct State {
     geom: Geometry,
     cfg: Config,
     hovered: Option<usize>,
+    /// Pointer position along the dock's long axis while it is over the
+    /// panel: the centre of the magnify wave.
+    pointer: Option<f64>,
     last_us: i64,
     ticking: bool,
     /// Window previews, when enabled. Outside the `RefCell`'s reach in
@@ -181,6 +184,7 @@ impl State {
 
         // The gap opens along the dock's long axis, which is the axis the
         // edge normal is *not* on.
+        let shift = shift + self.wave_offset(i);
         let (shift_x, shift_y) =
             if self.geom.horizontal() { (shift, 0.0) } else { (0.0, shift) };
 
@@ -203,7 +207,7 @@ impl State {
         // dot is never put in the dock.
         if let Some(dot) = self.indicators.get(i).filter(|d| d.parent().is_some()) {
             if let Some((ix, iy)) = indicator_origin(&self.geom, i, &self.cfg) {
-                let shift = self.shifts[i].pos;
+                let shift = self.shifts[i].pos + self.wave_offset(i);
                 let (dx, dy) = if self.geom.horizontal() { (shift, 0.0) } else { (0.0, shift) };
                 self.fixed.set_child_transform(
                     dot,
@@ -239,7 +243,37 @@ impl State {
 
     /// The panel's rectangle as drawn now.
     fn panel_rect(&self) -> Rect {
-        self.panel_from.lerp(&panel_target(&self.geom), self.panel_glide.pos)
+        let mut r = self.panel_from.lerp(&panel_target(&self.geom), self.panel_glide.pos);
+        // The panel widens with the wave, as far as its end icons are pushed.
+        if self.cfg.wave() && !self.springs.is_empty() {
+            // An end icon moves out by its offset and grows by half its growth
+            // on each side, since it scales about its own centre.
+            let n = self.springs.len();
+            let lo = (-self.wave_offset(0) + self.wave_growth(0) / 2.0).max(0.0);
+            let hi = (self.wave_offset(n - 1) + self.wave_growth(n - 1) / 2.0).max(0.0);
+            r.along -= lo;
+            r.length += lo + hi;
+        }
+        r
+    }
+
+    /// How much item `i` has grown along the dock, as drawn now.
+    fn wave_growth(&self, i: usize) -> f64 {
+        let e = self.geom.extents.get(i).copied().unwrap_or(0.0);
+        e * (self.springs[i].pos - 1.0).max(0.0)
+    }
+
+    /// How far the wave pushes item `i` along the dock: half of what grew
+    /// before it outwards one way, half of what grew after it the other, so
+    /// the icons part around the pointer and never overlap.
+    fn wave_offset(&self, i: usize) -> f64 {
+        if !self.cfg.wave() {
+            return 0.0;
+        }
+        let n = self.springs.len().min(self.geom.extents.len());
+        let before: f64 = (0..i.min(n)).map(|j| self.wave_growth(j)).sum();
+        let after: f64 = (i + 1..n).map(|j| self.wave_growth(j)).sum();
+        (before - after) / 2.0
     }
 
     fn place_panel(&self) {
@@ -284,13 +318,31 @@ impl State {
         let mode = if self.cfg.magnify.enabled { self.cfg.magnify.hover } else { Hover::None };
         let zoom = if mode == Hover::Scale { self.cfg.magnify.zoom } else { 1.0 };
 
+        // One slot's pitch, the unit the wave's spread is measured in.
+        let pitch = self.cfg.dock.icon_size + self.cfg.spacing();
+        let spread = self.cfg.magnify.spread;
+        let horizontal = self.geom.horizontal();
+
         for i in 0..self.springs.len() {
             // A divider that swells or lights up on hover reads as a glitch,
             // so only real items react — but hover still registers, so
             // right-click works everywhere.
             let reacts = self.data.get(i).is_some_and(|d| d.kind != ItemKind::Separator);
             let on = Some(i) == self.hovered && reacts;
-            self.springs[i].target = if on { zoom } else { 1.0 };
+            self.springs[i].target = match (self.cfg.wave(), self.pointer) {
+                // The wave: each icon magnifies by how close its centre is to
+                // the pointer, easing to nothing `spread` slots away. Measured
+                // on the resting layout, so the push itself cannot feed back.
+                (true, Some(p)) if reacts => {
+                    let (sx, sy) = self.geom.slots[i];
+                    let centre = if horizontal { sx } else { sy } + self.geom.extents[i] / 2.0;
+                    let d = ((centre - p).abs() / pitch / spread).min(1.0);
+                    let f = (d * std::f64::consts::FRAC_PI_2).cos().powi(2);
+                    1.0 + (zoom - 1.0) * f
+                }
+                (true, _) => 1.0,
+                (false, _) => if on { zoom } else { 1.0 },
+            };
             self.hovers[i].target = if on && mode == Hover::Fill { 1.0 } else { 0.0 };
         }
     }
@@ -658,6 +710,7 @@ impl DockSurface {
             geom,
             cfg: cfg.clone(),
             hovered: None,
+            pointer: None,
             last_us: 0,
             ticking: false,
             previews: None,
@@ -3093,13 +3146,32 @@ fn attach_motion(fixed: &gtk::Fixed, state: &Rc<RefCell<State>>, icon: f64) {
     {
         let state = state.clone();
         motion.connect_motion(move |_, x, y| {
-            let hit = state.borrow().geom.slot_at(x, y, icon);
+            let (hit, wave) = {
+                let mut s = state.borrow_mut();
+                let g = &s.geom;
+                let along = if g.horizontal() { x } else { y };
+                s.pointer = g.in_panel(x, y).then_some(along);
+                (s.geom.slot_at(x, y, icon), s.cfg.wave())
+            };
             set_hover(&state, hit);
+            // The wave follows the pointer within an icon too, not only when
+            // it crosses into the next one.
+            if wave {
+                state.borrow_mut().retarget();
+                ensure_ticking(&state);
+            }
         });
     }
     {
         let state = state.clone();
-        motion.connect_leave(move |_| set_hover(&state, None));
+        motion.connect_leave(move |_| {
+            state.borrow_mut().pointer = None;
+            set_hover(&state, None);
+            if state.borrow().cfg.wave() {
+                state.borrow_mut().retarget();
+                ensure_ticking(&state);
+            }
+        });
     }
     fixed.add_controller(motion);
 }
@@ -3306,6 +3378,9 @@ fn ensure_ticking(state: &Rc<RefCell<State>>) {
             } else {
                 moving = true;
             }
+            s.place_panel();
+        } else if s.cfg.wave() {
+            // The panel stretches with the wave's end icons.
             s.place_panel();
         }
         if !moving {

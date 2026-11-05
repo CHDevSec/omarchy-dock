@@ -295,6 +295,18 @@ fn build_window() -> gtk::Window {
             &number(1.05, 2.5, 0.05, 2, cfg.magnify.zoom.max(1.05), |v| edit(move |c| c.magnify.zoom = v)),
         );
         zoom_row.set_sensitive(cfg.magnify.hover == Hover::Scale);
+        // The classic dock wave: neighbours magnify too and the icons part.
+        const SPREADS: [f64; 3] = [0.0, 1.5, 2.5];
+        let wave_row = field(
+            "Wave",
+            Some("Neighbours grow too and the icons part around the pointer."),
+            &segmented(
+                &["Off", "Narrow", "Wide"],
+                SPREADS.iter().position(|x| (x - cfg.magnify.spread).abs() < 0.01).map(|i| i as u32).unwrap_or(u32::MAX),
+                |i| edit(move |c| c.magnify.spread = SPREADS[i as usize]),
+            ),
+        );
+        wave_row.set_sensitive(cfg.magnify.hover == Hover::Scale);
         let current = match cfg.magnify.hover {
             Hover::Fill => 0,
             Hover::Scale => 1,
@@ -302,6 +314,7 @@ fn build_window() -> gtk::Window {
         };
         {
             let zoom_row = zoom_row.clone();
+            let wave_row = wave_row.clone();
             let lift_row = lift_row.clone();
             let bounce_row = bounce_row.clone();
             g.append(&field(
@@ -314,10 +327,16 @@ fn build_window() -> gtk::Window {
                         _ => Hover::Fill,
                     };
                     zoom_row.set_sensitive(mode == Hover::Scale);
+                    wave_row.set_sensitive(mode == Hover::Scale);
                     lift_row.set_sensitive(mode == Hover::Scale);
                     bounce_row.set_sensitive(mode == Hover::Scale);
                     edit(move |c| {
                         c.magnify.hover = mode;
+                        // A zoom of 1 (what the Highlight mode leaves behind)
+                        // would make Magnify do nothing at all.
+                        if mode == Hover::Scale && c.magnify.zoom < 1.05 {
+                            c.magnify.zoom = 1.6;
+                        }
                         // `enabled` gates hover reactions as a whole; the mode
                         // says which one. Keep them in step.
                         c.magnify.enabled = mode != Hover::None;
@@ -326,6 +345,7 @@ fn build_window() -> gtk::Window {
             ));
         }
         g.append(&zoom_row);
+        g.append(&wave_row);
         g.append(&field(
             "Name delay",
             Some("Milliseconds before the app name appears."),
