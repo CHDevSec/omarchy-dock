@@ -24,6 +24,9 @@ pub fn set_enabled(on: bool) {
 /// resume would otherwise produce a huge `dt` and blow the spring up.
 const MAX_DT: f64 = 1.0 / 30.0;
 
+/// Longest single integration step.
+const SUBSTEP: f64 = 1.0 / 480.0;
+
 impl Spring {
     pub fn at(v: f64) -> Self {
         Self { pos: v, vel: 0.0, target: v }
@@ -35,9 +38,17 @@ impl Spring {
             return;
         }
         let dt = dt.clamp(0.0, MAX_DT);
-        let accel = stiffness * (self.target - self.pos) - damping * self.vel;
-        self.vel += accel * dt;
-        self.pos += self.vel * dt;
+        // Semi-implicit Euler is only stable while `damping * h` and
+        // `sqrt(stiffness) * h` stay well under 2. A stiff, critically damped
+        // spring on a slow frame breaks that and blows up, so integrate in
+        // substeps short enough for any spring the dock uses.
+        let steps = (dt / SUBSTEP).ceil().max(1.0);
+        let h = dt / steps;
+        for _ in 0..steps as usize {
+            let accel = stiffness * (self.target - self.pos) - damping * self.vel;
+            self.vel += accel * h;
+            self.pos += self.vel * h;
+        }
     }
 
     pub fn settled(&self) -> bool {
@@ -49,5 +60,23 @@ impl Spring {
     pub fn settle(&mut self) {
         self.pos = self.target;
         self.vel = 0.0;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_stiff_critically_damped_spring_settles_on_slow_frames() {
+        // The wave's tracking spring on a 30fps frame: plain Euler diverges.
+        let k = 2400.0;
+        let mut s = Spring::at(1.0);
+        s.target = 1.6;
+        for _ in 0..60 {
+            s.step(1.0 / 30.0, k, 2.0 * f64::sqrt(k));
+            assert!(s.pos.is_finite() && s.pos <= 1.6 + 1e-6, "no overshoot: {}", s.pos);
+        }
+        assert!(s.settled());
     }
 }

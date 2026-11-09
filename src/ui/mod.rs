@@ -7,6 +7,7 @@ pub mod menu;
 pub mod preview;
 pub mod settings;
 pub mod stack;
+pub mod wave;
 
 pub use dock::DockSurface;
 pub use geometry::Geometry;

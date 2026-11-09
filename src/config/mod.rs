@@ -678,16 +678,6 @@ impl Config {
         self.magnify.enabled && self.magnify.hover == Hover::Scale && self.magnify.spread > 0.0
     }
 
-    /// Room at each end of the dock's long axis for the wave: the end icons
-    /// are pushed outwards and grow, and must not be clipped by the surface.
-    pub fn wave_margin(&self) -> f64 {
-        if !self.wave() {
-            return 0.0;
-        }
-        let grow = (self.magnify.zoom - 1.0).max(0.0) * self.dock.icon_size;
-        (grow * (self.magnify.spread + 1.0) / 2.0).ceil() + 2.0
-    }
-
     /// Absolute damping coefficient implied by `damping_ratio`.
     pub fn damping(&self) -> f64 {
         2.0 * self.magnify.stiffness.sqrt() * self.magnify.damping_ratio

@@ -9,6 +9,7 @@
 
 use crate::config::{Config, Position};
 use crate::state::ItemKind;
+use crate::ui::wave::{max_spill, Slot};
 
 /// Thickness of a divider slot along the dock's long axis.
 const SEPARATOR_EXTENT: f64 = 13.0;
@@ -70,8 +71,26 @@ impl Geometry {
         // oscillates: revealing moves the surface away from the cursor that
         // triggered it.
         let edge = cfg.dock.edge_offset.max(0) as f64;
-        // Transparent room at both ends for the magnify wave to spill into.
-        let wave = cfg.wave_margin();
+        // Transparent room at both ends for the magnify wave to spill into:
+        // the most the stretched row can reach past either end for any
+        // pointer position, so a magnified end icon is never cut off and the
+        // surface never has to grow mid-hover.
+        let wave = if cfg.wave() {
+            let mut at = 0.0;
+            let row: Vec<Slot> = extents
+                .iter()
+                .map(|&e| {
+                    let s = Slot { start: at, extent: e };
+                    at += e + spacing;
+                    s
+                })
+                .collect();
+            let reacts: Vec<bool> = kinds.iter().map(|k| *k != ItemKind::Separator).collect();
+            let spill = max_spill(&row, &reacts, cfg.magnify.zoom, icon + spacing, cfg.magnify.spread);
+            spill.ceil() + 2.0
+        } else {
+            0.0
+        };
 
         if cfg.dock.position.is_vertical() {
             let panel_w = icon + px * 2.0;
@@ -188,12 +207,16 @@ impl Geometry {
         self.lift_dir.0 == 0.0
     }
 
-    /// Whether a surface-local point is over the panel band.
-    pub fn in_panel(&self, x: f64, y: f64) -> bool {
-        x >= self.panel_x
-            && x <= self.panel_x + self.panel_w
-            && y >= self.panel_y
-            && y <= self.panel_y + self.panel_h
+    /// Which slot spans a position along the dock's long axis, on the resting
+    /// row. Under the wave this is also the icon drawn under that position,
+    /// since the row stretches about the pointer.
+    pub fn slot_along(&self, along: f64, icon: f64) -> Option<usize> {
+        let h = self.horizontal();
+        self.slots.iter().enumerate().position(|(i, &(sx, sy))| {
+            let start = if h { sx } else { sy };
+            let e = self.extents.get(i).copied().unwrap_or(icon);
+            along >= start && along <= start + e
+        })
     }
 
     /// Which slot contains a surface-local point, ignoring any magnification.
@@ -234,20 +257,19 @@ mod tests {
         cfg.magnify.hover = Hover::Scale;
         cfg.magnify.zoom = 1.6;
         let flat = Geometry::compute(&cfg, &kinds);
-        assert_eq!(cfg.wave_margin(), 0.0, "spread 0 is the single-icon magnify");
+        assert_eq!(flat.panel_x, 0.0, "spread 0 is the single-icon magnify");
 
         cfg.magnify.spread = 2.5;
         cfg.dock.spacing = Some(flat.slots[1].0 - flat.slots[0].0 - cfg.dock.icon_size);
-        let m = cfg.wave_margin();
-        assert!(m > 0.0);
         let wave = Geometry::compute(&cfg, &kinds);
+        let m = wave.panel_x - flat.panel_x;
+        assert!(m > 0.0);
         assert_eq!(wave.window_w, flat.window_w + 2.0 * m);
-        assert_eq!(wave.panel_x, flat.panel_x + m);
         assert_eq!(wave.slots[0].0, flat.slots[0].0 + m);
         assert_eq!(wave.panel_w, flat.panel_w);
 
         cfg.magnify.hover = Hover::Fill;
-        assert_eq!(cfg.wave_margin(), 0.0, "the wave is Magnify's alone");
+        assert_eq!(Geometry::compute(&cfg, &kinds).panel_x, 0.0, "the wave is Magnify's alone");
     }
 
     #[test]
