@@ -4,7 +4,7 @@ import Quickshell.Io
 // Patched locally (2026-11-05): Omarchy 4.5 ships its own /usr/bin/omarchy-dock
 // (config script), so the patched binary lives at /usr/local/bin/omarchy-dock-plugin.
 //
-// Caio Dock — fork of github.com/szlukabence/omarchy-dock (MIT).
+// Omarchy Dock (CHDevSec) — fork of github.com/szlukabence/omarchy-dock (MIT).
 //
 // omarchy-dock is a separate GTK4 layer-shell process rather than QML, so this
 // plugin supervises it instead of drawing it: enabling the plugin starts the
@@ -30,7 +30,7 @@ Item {
       "if ! command -v omarchy-dock-plugin >/dev/null 2>&1; then " +
         "omarchy notification send --app-name Dock -u critical " +
         "'Dock is not installed' " +
-        "'This plugin is only the supervisor. Build and install the binary: ~/Projects/caio-dock/install.sh'; " +
+        "'This plugin is only the supervisor. Build and install the binary: run install.sh from your clone of github.com/CHDevSec/omarchy-dock'; " +
         "exit 0; " +
       "fi; " +
       "pgrep -f '^(/usr/local/bin/)?omarchy-dock-plugin( |$)' >/dev/null || setsid uwsm-app -- omarchy-dock-plugin >/dev/null 2>&1 &"]

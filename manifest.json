@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "id": "io.github.caio.dock",
-  "name": "Caio Dock",
-  "version": "1.4.3-caio.1",
-  "author": "Caio (fork of omarchy-dock by Bence Szluka)",
+  "id": "io.github.chdevsec.omarchy-dock",
+  "name": "Omarchy Dock",
+  "version": "1.4.3-chdevsec.1",
+  "author": "CHDevSec (fork of omarchy-dock by Bence Szluka)",
   "license": "MIT",
   "description": "macOS-style dock for Omarchy: window previews, real minimize, drag-to-workspace and USB drives, drawn with the shell's own design tokens.",
   "kinds": [

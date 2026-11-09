@@ -31,7 +31,7 @@ use std::path::{Path, PathBuf};
 /// Namespaced, as the plugin marketplace asks: listing ids are permanent and
 /// global, and a bare `omarchy-dock` would read as a first-party component.
 /// `omarchy plugin add` clones into a directory named after this id.
-pub const PLUGIN_ID: &str = "io.github.caio.dock";
+pub const PLUGIN_ID: &str = "io.github.chdevsec.omarchy-dock";
 
 /// The id the plugin had before it was namespaced. Installs made then left a
 /// plugin directory and a `shell.json` entry under it, which would otherwise

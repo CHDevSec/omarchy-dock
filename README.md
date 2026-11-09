@@ -1,4 +1,4 @@
-# omarchy-dock
+# omarchy-dock (CHDevSec fork)
 
 A dock for [Omarchy](https://omarchy.org/) that looks like it came with it.
 
@@ -9,113 +9,70 @@ the menus — rather than being a dock that merely runs on the same desktop.
 
 ![The dock on Omarchy](preview.png)
 
-If the dock earns a place on your desktop, a ❤️ on its
-[Omarchy plugin page](https://plugins.omarchy.org/plugin.html?id=io.github.szlukabence.omarchy-dock)
-helps other people find it.
+This is [CHDevSec](https://github.com/CHDevSec)'s fork of
+[szlukabence/omarchy-dock](https://github.com/szlukabence/omarchy-dock) by
+Bence Szluka, who wrote nearly all of it. The plugin id is
+`io.github.chdevsec.omarchy-dock`, so it never clashes with the original
+plugin. If you want the original, use the upstream repository and its
+[Omarchy plugin page](https://plugins.omarchy.org/plugin.html?id=io.github.szlukabence.omarchy-dock).
+
+## What the fork adds
+
+- **Screens page in the settings**: a dock on every screen, on one chosen
+  screen, or a single dock that follows focus. An unplugged chosen screen
+  falls back to another one instead of leaving you without a dock.
+- **Follows monitor changes**: plugging or unplugging a screen, or resuming
+  from suspend, rebuilds one dock per screen. Before, a dock could pile up on
+  top of another one or a screen that came back got no dock.
+- **Robustness fixes**: maximized windows (Omarchy's "full width") no longer
+  hide the dock, only real fullscreen does; a screen recorder that died
+  without cleaning up no longer keeps the dock hidden; an empty or broken
+  `config.toml` keeps the current settings instead of resetting everything to
+  defaults; the dock stays up when every output disappears at once; any
+  setting change applies right away; the Hyprland event stream reconnects
+  quickly and survives window titles that are not valid UTF-8.
+- **Settings redesign**: a sidebar with pages in Omarchy's square, monospace
+  style, plus an Animation page and a macOS-style magnify wave.
+- **Omarchy 4.5+**: the binary is installed as
+  `/usr/local/bin/omarchy-dock-plugin`, because Omarchy now ships its own
+  `/usr/bin/omarchy-dock`. The screen-recording marker is read from
+  `$XDG_RUNTIME_DIR`, where Omarchy 4.5 writes it.
 
 ## Install
 
 ```bash
-curl -LO https://github.com/szlukabence/omarchy-dock/releases/download/v1.4.3/omarchy-dock-1.4.3-1-x86_64.pkg.tar.zst
-echo "250e1e02363e8f73c35136fe9484947d16a0c00e84171a1fe8a0f34cdb0418d5  omarchy-dock-1.4.3-1-x86_64.pkg.tar.zst" | sha256sum -c - &&
-  sudo pacman -U omarchy-dock-1.4.3-1-x86_64.pkg.tar.zst
-omarchy plugin add https://github.com/szlukabence/omarchy-dock.git --enable
-omarchy-dockctl install
+git clone https://github.com/CHDevSec/omarchy-dock.git ~/Projects/omarchy-dock
+~/Projects/omarchy-dock/install.sh
 ```
 
-The first lines install the dock as an ordinary pacman package from the
-[v1.4.3 release](https://github.com/szlukabence/omarchy-dock/releases/tag/v1.4.3) —
-prebuilt, nothing to compile. The next adds the Omarchy plugin that starts and
-stops it; the last adds the theme hook and menu entries.
+`install.sh` builds the dock (`cargo build --release`, so you need `rust`),
+installs it to `/usr/local/bin/omarchy-dock-plugin` (asks for your password
+once), copies the two plugin files (`manifest.json` and `Service.qml`) into
+`~/.config/omarchy/plugins/io.github.chdevsec.omarchy-dock` and restarts the
+dock. Run it again after `git pull` to update.
 
-The release is not signed, so the package is checked against the SHA-256 written
-above before pacman sees it. That checksum is part of this repository, so it is
-reviewed along with the code: if the file on the release is ever replaced,
-`sha256sum -c` reports `FAILED` and nothing is installed. Download first, then
-install the file: `pacman -U <url>` does not work here, because Arch's default
-`pacman.conf` requires a signature for packages fetched from a URL.
+Keep the clone **outside** `~/.config/omarchy/plugins`. The shell reloads a
+plugin on every file that changes in its directory, so building in there
+(thousands of writes into `target/`) makes the whole desktop stutter.
+`install.sh` refuses to run from there.
 
-### Building it yourself
-
-```bash
-omarchy plugin add https://github.com/szlukabence/omarchy-dock.git --enable
-cd ~/.config/omarchy/plugins/io.github.szlukabence.omarchy-dock && ./install.sh
-```
-
-`omarchy plugin add` only *clones* a repository — it never builds or runs
-anything. But the clone it leaves behind is the full source tree, so the plugin
-can build the binary it supervises. That is what `install.sh` does: `makepkg
--si`, so pacman still owns the result, and then `omarchy-dockctl install`. It
-takes a couple of minutes and asks for your password once.
-
-The plugin on its own is only the supervisor — it starts and stops the dock and
-puts it in `omarchy menu plugin`. Install it without the dock and it says so,
-rather than failing with "command not found".
-
-### Already have a checkout
-
-```bash
-./install.sh
-```
-
-### AUR
-
-Not yet — AUR registration is closed. Both packages are ready to publish:
-`packaging/aur/PKGBUILD` builds from a pinned, checksummed commit, and
-`packaging/aur-bin/PKGBUILD` repackages the release tarball, checked against
-its SHA-256. Once they are up, installing becomes `omarchy pkg aur add
-omarchy-dock-bin`.
-
-### Releasing
-
-Bump the version in `Cargo.toml`, `manifest.json` and
-`packaging/local/PKGBUILD`, commit, then tag and push:
-
-```bash
-packaging/release.sh 1.3.0              # optional rehearsal: tests, builds, fills dist/
-git tag v1.3.0 && git push origin master v1.3.0
-```
-
-The tag starts the release workflow, which builds on Arch with that same
-script and publishes a GitHub release carrying the package, a tarball of the
-binaries, and `SHA256SUMS`. Every input to that build is pinned: the container
-image by digest, its packages to one day's snapshot of the Arch Linux Archive,
-the Rust release by `rust-toolchain.toml`, the crates by `Cargo.lock`, and the
-checkout action by commit. It refuses a tag that disagrees with any of the
-version numbers above. Afterwards, update the version and the package's
-checksum in the install lines above (from `SHA256SUMS`, which the workflow's
-summary shows); in `packaging/aur/PKGBUILD` set `pkgver`, `_commit` to
-`git rev-parse vX.Y.Z^{commit}` and the checksum from `makepkg -g`; in
-`packaging/aur-bin/PKGBUILD` the version and the tarball checksum from the same
-summary. Regenerate each `.SRCINFO` with `makepkg --printsrcinfo`.
+The plugin on its own is only the supervisor. It starts the dock when the
+shell loads, and it says so if the binary is missing instead of failing with
+"command not found".
 
 ### Removal
 
 ```bash
-omarchy-dockctl uninstall              # hook, menu entries, shell.json entry
-omarchy plugin remove io.github.szlukabence.omarchy-dock   # the plugin checkout
-sudo pacman -Rns omarchy-dock          # the binaries
+pkill -f '^(/usr/local/bin/)?omarchy-dock-plugin( |$)'
+rm -rf ~/.config/omarchy/plugins/io.github.chdevsec.omarchy-dock
+sudo rm /usr/local/bin/omarchy-dock-plugin
 rm -rf ~/.config/omarchy-dock          # your settings, if you want them gone
+omarchy restart shell
 ```
 
-`uninstall` reverses everything `install` did and nothing else. Neither ever
-overwrites or deletes a file that is not byte for byte what the dock wrote —
-this build, an earlier release, or the copy it kept when it last wrote it.
-Before it starts, `uninstall` asks a running dock to put any minimized windows
-back on their workspaces, since nothing else brings them back.
-Running `install` again only refreshes the dock's own files: if the plugin
-directory or the hook holds anything else (your edit, or another plugin), it is
-left alone, the plugin is not enabled, and the report says what was found.
-`uninstall` removes the plugin directory only once that leaves it empty, and
-never a git-managed plugin checkout — that is `omarchy plugin remove`'s job.
-A file the dock edits a block in (the menu extension, `shell.json`,
-`looknfeel.lua`) that exists but cannot be read — no permission, not UTF-8 — is
-left alone and reported, never treated as empty. Every write goes to a
-temporary file that is then renamed into place, so a crash or a full disk
-leaves the old file whole, and a symlinked file stays a symlink. A symlinked
-plugin directory — a development checkout, say — is neither written into nor
-removed. `install --blur` reloads Hyprland and, if that brings new config
-errors, puts `looknfeel.lua` back as it was, unless it changed in the meantime.
+The `packaging/` directory, the release workflow and the `omarchy-dockctl`
+install/uninstall flow described further down come from upstream and are not
+used by this fork's installer.
 
 ## What it does
 
@@ -475,5 +432,6 @@ Sockets live in `$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/`, not
 
 ## License
 
-MIT. See [LICENSE](LICENSE). The vendored Hyprland protocol used for window
+MIT, same as upstream. Original work © 2026 Bence Szluka; fork changes ©
+2026 CHDevSec. See [LICENSE](LICENSE). The vendored Hyprland protocol used for window
 previews is BSD-3-Clause; see [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES).
