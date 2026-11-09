@@ -18,7 +18,7 @@ use gtk::prelude::*;
 
 use std::cell::RefCell;
 
-use crate::config::{Config, HideMode, Hover, Position, Style};
+use crate::config::{Config, HideMode, Hover, MonitorMode, Position, Style};
 use crate::ui::menu::MenuAction;
 
 /// The launcher's right-click menu: shell surfaces and one-click actions.
@@ -460,6 +460,74 @@ fn build_window() -> gtk::Window {
         stack.add_named(&scroll, Some("workspaces"));
     }
 
+    // ── screens ─────────────────────────────────────────────────────────────
+    {
+        let (scroll, page) = page("Screens", "Which monitors get a dock.");
+
+        // What GTK sees now. A configured screen that is unplugged still gets
+        // a button, so the choice survives taking the laptop off its desk.
+        let mut screens = connected_screens();
+        let saved = cfg.monitors.primary.clone();
+        if !saved.is_empty() && !screens.iter().any(|(c, _)| *c == saved) {
+            screens.push((saved.clone(), format!("{saved} (unplugged)")));
+        }
+        let names: Vec<String> = screens.iter().map(|(c, _)| c.clone()).collect();
+        let labels: Vec<&str> = screens.iter().map(|(_, l)| l.as_str()).collect();
+        // An empty `primary` means the first screen, so show it that way.
+        let chosen = if saved.is_empty() {
+            0
+        } else {
+            names.iter().position(|n| *n == saved).unwrap_or(0) as u32
+        };
+
+        let g = group(&page, "Dock on");
+        let screen_row = field(
+            "Screen",
+            Some("The one screen, or where the dock waits when nothing is focused."),
+            &{
+                let names = names.clone();
+                segmented(&labels, chosen, move |i| {
+                    let name = names[i as usize].clone();
+                    edit(move |c| c.monitors.primary = name)
+                })
+            },
+        );
+        screen_row.set_sensitive(cfg.monitors.mode != MonitorMode::All);
+        let current = match cfg.monitors.mode {
+            MonitorMode::All => 0,
+            MonitorMode::Primary => 1,
+            MonitorMode::Focused => 2,
+        };
+        {
+            let screen_row = screen_row.clone();
+            let first = names.first().cloned().unwrap_or_default();
+            g.append(&field(
+                "Show the dock",
+                Some("Follow focus moves one dock to the screen you are working on."),
+                &segmented(&["Every screen", "One screen", "Follow focus"], current, move |i| {
+                    let mode = match i {
+                        1 => MonitorMode::Primary,
+                        2 => MonitorMode::Focused,
+                        _ => MonitorMode::All,
+                    };
+                    screen_row.set_sensitive(mode != MonitorMode::All);
+                    let first = first.clone();
+                    edit(move |c| {
+                        c.monitors.mode = mode;
+                        // Pin the screen the row shows as chosen, so plugging
+                        // in another one later does not move the dock.
+                        if mode != MonitorMode::All && c.monitors.primary.is_empty() {
+                            c.monitors.primary = first;
+                        }
+                    })
+                }),
+            ));
+        }
+        g.append(&screen_row);
+
+        stack.add_named(&scroll, Some("screens"));
+    }
+
     // ── animation ───────────────────────────────────────────────────────────
     {
         let (scroll, page) = page("Animation", "How the dock moves. Springs, so motion can reverse mid-way.");
@@ -537,6 +605,7 @@ fn build_window() -> gtk::Window {
     let mut first: Option<gtk::ToggleButton> = None;
     for (name, label) in [
         ("placement", "Placement"),
+        ("screens", "Screens"),
         ("appearance", "Appearance"),
         ("hover", "Hover"),
         ("animation", "Animation"),
@@ -733,6 +802,29 @@ fn add_separator() {
         }
         c.items.pinned.insert(at.min(c.items.pinned.len()), sep.into());
     });
+}
+
+/// Connected screens as (connector, button label), in GTK's order — the
+/// same order the dock picks the first screen from.
+fn connected_screens() -> Vec<(String, String)> {
+    let Some(display) = gtk::gdk::Display::default() else { return Vec::new() };
+    let list = display.monitors();
+    (0..list.n_items())
+        .filter_map(|i| list.item(i).and_downcast::<gtk::gdk::Monitor>())
+        .filter_map(|m| {
+            let name = m.connector()?.to_string();
+            // Built-in panels show up as eDP/LVDS/DSI; say so, since the
+            // connector name alone means little to most people.
+            let builtin = ["eDP", "LVDS", "DSI"].iter().any(|p| name.starts_with(p));
+            let g = m.geometry();
+            let label = if builtin {
+                format!("{name} · laptop")
+            } else {
+                format!("{name} · {}×{}", g.width(), g.height())
+            };
+            Some((name, label))
+        })
+        .collect()
 }
 
 /// Load, mutate, and save the config. The watcher applies it.

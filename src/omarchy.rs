@@ -167,8 +167,26 @@ pub static RECORDING_MARKER: std::sync::LazyLock<PathBuf> = std::sync::LazyLock:
 });
 
 /// Whether a screen recording is in progress.
+///
+/// The marker alone is not enough: Omarchy's script removes it only at the end
+/// of a clean stop, so a recorder that crashed or was killed across a suspend
+/// leaves it behind and the dock would stay hidden until a reboot. The script
+/// also saves the recorder's pid next to it and treats a saved pid that is no
+/// longer running as "nothing is recording"; do the same.
 pub fn is_recording() -> bool {
-    RECORDING_MARKER.exists()
+    if !RECORDING_MARKER.exists() {
+        return false;
+    }
+    let pid_file = RECORDING_MARKER.with_file_name("omarchy-screenrecord-pid");
+    match std::fs::read_to_string(&pid_file) {
+        Ok(pid) => match pid.trim().parse::<u32>() {
+            Ok(pid) => std::path::Path::new(&format!("/proc/{pid}")).exists(),
+            // Unreadable pid: trust the marker, as the script does.
+            Err(_) => true,
+        },
+        // No pid saved (older script, or still starting): trust the marker.
+        Err(_) => true,
+    }
 }
 
 // ── the bar ─────────────────────────────────────────────────────────────────

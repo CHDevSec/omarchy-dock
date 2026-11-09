@@ -125,9 +125,16 @@ where
     let mut first = true;
 
     loop {
-        match connect_and_read(&mut on_event, &mut first).await {
+        let mut connected = false;
+        match connect_and_read(&mut on_event, &mut first, &mut connected).await {
             Ok(()) => tracing::warn!("Hyprland event socket closed"),
             Err(e) => tracing::warn!(error = %e, "Hyprland event socket error"),
+        }
+        // A connection that worked starts the wait over: otherwise a few
+        // drops in a long session leave every later reconnect at the 5s
+        // ceiling, and the events in that gap are gone.
+        if connected {
+            backoff = std::time::Duration::from_millis(250);
         }
 
         tokio::time::sleep(backoff).await;
@@ -138,7 +145,7 @@ where
     }
 }
 
-async fn connect_and_read<F>(on_event: &mut F, first: &mut bool) -> Result<()>
+async fn connect_and_read<F>(on_event: &mut F, first: &mut bool, connected: &mut bool) -> Result<()>
 where
     F: FnMut(HyprEvent),
 {
@@ -148,13 +155,22 @@ where
         .with_context(|| format!("connecting to {}", path.display()))?;
 
     tracing::info!(path = %path.display(), "Hyprland event stream connected");
+    *connected = true;
     if !*first {
         on_event(HyprEvent::Reconnected);
     }
 
-    let mut lines = BufReader::new(stream).lines();
-    while let Some(line) = lines.next_line().await.context("reading event")? {
-        if let Some(event) = parse(&line) {
+    // Raw bytes, not `lines()`: a window title that is not valid UTF-8 would
+    // make `lines()` fail and drop the whole connection over one event.
+    let mut reader = BufReader::new(stream);
+    let mut buf = Vec::new();
+    loop {
+        buf.clear();
+        if reader.read_until(b'\n', &mut buf).await.context("reading event")? == 0 {
+            break;
+        }
+        let line = String::from_utf8_lossy(&buf);
+        if let Some(event) = parse(line.trim_end_matches(['\n', '\r'])) {
             on_event(event);
         }
     }

@@ -48,6 +48,9 @@ pub enum AppEvent {
     Quit,
     /// A burst of focus events that landed on a minimized window is over.
     FocusSettled,
+    /// GTK's monitor list changed and has stayed put for a moment: a screen
+    /// was plugged or unplugged, or outputs came back after a suspend.
+    MonitorsChanged,
 }
 
 pub type Sender = async_channel::Sender<AppEvent>;

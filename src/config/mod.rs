@@ -482,6 +482,46 @@ pub fn expand_tilde(p: &Path) -> PathBuf {
 // ── loading ─────────────────────────────────────────────────────────────────
 
 impl Config {
+    /// The config after the file changed on disk, or `None` to keep the one
+    /// already running.
+    ///
+    /// Unlike [`Config::load`], which has to produce *something* at startup,
+    /// a reload has a working config to fall back on. A file that is empty or
+    /// does not parse is usually an editor mid-save or a typo; falling back to
+    /// defaults then would wipe the pins and every setting from the screen
+    /// until the next good save.
+    pub fn reload() -> Option<Self> {
+        let path = config_path();
+        let text = match std::fs::read_to_string(&path) {
+            Ok(text) => text,
+            // Deleted: same as at startup, write a fresh one.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Some(Self::load()),
+            Err(e) => {
+                tracing::warn!(path = %path.display(), error = %e, "cannot read config; keeping current");
+                return None;
+            }
+        };
+        if text.trim().is_empty() {
+            tracing::debug!("config file empty, probably mid-save; keeping current");
+            return None;
+        }
+        match toml::from_str::<Config>(&text) {
+            Ok(cfg) => {
+                tracing::info!(path = %path.display(), "config reloaded");
+                Some(cfg)
+            }
+            Err(e) => {
+                tracing::error!(path = %path.display(), error = %e, "invalid config; keeping current");
+                crate::omarchy::notify(
+                    "Dock config is invalid",
+                    Some(&format!("Keeping the current settings. {e}")),
+                    Some("\u{f071}"),
+                );
+                None
+            }
+        }
+    }
+
     /// Load the config, creating it from defaults on first run.
     ///
     /// A malformed file is a soft failure: we log and fall back to defaults

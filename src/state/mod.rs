@@ -791,7 +791,12 @@ impl DockState {
             self.monitors.iter().map(|m| m.active_workspace.id).collect();
         self.clients
             .iter()
-            .any(|c| c.fullscreen > 0 && visible.contains(&c.workspace.id))
+            // Hyprland's `fullscreen` is a mode bitmask: 1 is maximized, 2 is
+            // fullscreen. Omarchy maximizes on purpose ("full width",
+            // double-click in floating mode) and that window was already
+            // sized around a dock that reserves space, so only real
+            // fullscreen counts.
+            .any(|c| c.fullscreen & 2 != 0 && visible.contains(&c.workspace.id))
     }
 
     /// Whether Omarchy's screensaver is up.

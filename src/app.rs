@@ -595,6 +595,13 @@ pub fn run() -> glib::ExitCode {
         app.restyle();
         app.rebuild(gtk_app);
         *state.borrow_mut() = Some(app);
+        watch_monitors(drive_tx.clone());
+        // A GtkApplication quits when its last window closes. When every
+        // output the docks are on goes away at once (lid shut with nothing
+        // plugged in, outputs re-enumerated on resume) the compositor closes
+        // all of them before `MonitorsChanged` can rebuild, and nothing
+        // restarts the dock afterwards. Stay up until asked to quit.
+        std::mem::forget(gtk_app.hold());
 
         // Drain reload events on the main thread.
         let state = state.clone();
@@ -695,8 +702,17 @@ pub fn run() -> glib::ExitCode {
                     AppEvent::Control(c) => app.on_control(c, &gtk_app),
                     AppEvent::Quit => gtk_app.quit(),
                     AppEvent::FocusSettled => app.settle_focus(),
+                    // Every dock is tied to one monitor. When the set changes,
+                    // surfaces on a vanished screen get moved by the
+                    // compositor onto another one and pile up there, and a
+                    // screen that came back gets no dock. Rebuilding gives
+                    // each current monitor exactly one surface again.
+                    AppEvent::MonitorsChanged => {
+                        tracing::info!("monitors changed, rebuilding the docks");
+                        app.rebuild(&gtk_app);
+                    }
                     AppEvent::ConfigChanged => {
-                        let next = Config::load();
+                        let Some(next) = Config::reload() else { continue };
                         crate::anim::set_enabled(next.dock.animations);
                         sync_bar_workspaces(&next);
                         // Starts or stops watching notifications with it.
@@ -834,6 +850,24 @@ fn needs_rebuild(old: &Config, new: &Config) -> bool {
             .any(|(a, b)| a.enabled != b.enabled || a.path != b.path)
         || old.monitors.mode != new.monitors.mode
         || old.monitors.primary != new.monitors.primary
+        || differs_beyond_pins(old, new)
+}
+
+/// Whether anything other than the pinned list changed.
+///
+/// A dock surface keeps the config it was built with: delays, hover mode,
+/// preview size, auto-hide travel and keys like `avoid_bar` that only reach
+/// the geometry through `effective()`. Listing every such key above is a list
+/// that silently goes stale, so any setting change rebuilds. Settings change
+/// rarely; pins are the one thing edited often (drag to reorder), and sync()
+/// handles those in place.
+fn differs_beyond_pins(old: &Config, new: &Config) -> bool {
+    let strip = |c: &Config| {
+        let mut c = c.clone();
+        c.items.pinned.clear();
+        toml::to_string(&c).ok()
+    };
+    strip(old) != strip(new)
 }
 
 /// Create one surface per monitor the config asks for.
@@ -899,6 +933,31 @@ fn make_sink(worker: Option<crate::runtime::Handles>) -> crate::ui::dock::Action
             }
         }
     })
+}
+
+/// How long GTK's monitor list must stay unchanged before the docks follow
+/// it. Unplugging, resuming or a mode change arrives as a burst of removals
+/// and additions; rebuilding once at the end avoids building onto a screen
+/// that is about to go away.
+const MONITORS_SETTLE: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// Send `MonitorsChanged` once GTK's monitor list settles after a change.
+fn watch_monitors(tx: crate::event::Sender) {
+    let Some(display) = gdk::Display::default() else { return };
+    let pending: Rc<std::cell::Cell<Option<glib::SourceId>>> = Rc::default();
+    display.monitors().connect_items_changed(move |_, _, removed, added| {
+        tracing::debug!(removed, added, "monitor list changed");
+        if let Some(id) = pending.take() {
+            id.remove();
+        }
+        let tx = tx.clone();
+        let fired = pending.clone();
+        let id = glib::timeout_add_local_once(MONITORS_SETTLE, move || {
+            fired.set(None);
+            let _ = tx.try_send(AppEvent::MonitorsChanged);
+        });
+        pending.set(Some(id));
+    });
 }
 
 fn build_docks(
